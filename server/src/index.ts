@@ -49,6 +49,6 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 app.listen(config.port, () => {
   console.log(`RecallDesk API listening on http://localhost:${config.port}`);
   if (!isSupabaseConfigured) console.warn("! SUPABASE_URL / SUPABASE_ANON_KEY not set; database features will return 503.");
-  if (!isLlmConfigured) console.warn("! ANTHROPIC_API_KEY not set; AI features will return 503.");
+  if (!isLlmConfigured) console.warn("! GEMINI_API_KEY not set; AI features will return 503.");
   warmUpEmbeddings();
 });

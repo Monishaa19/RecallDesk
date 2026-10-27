@@ -1,74 +1,99 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { ApiError, FinishReason, GoogleGenAI, type Content } from "@google/genai";
 import { z } from "zod";
 import { config, isLlmConfigured } from "./config.js";
 import { HttpError } from "./errors.js";
 
-let client: Anthropic | null = null;
-function getClient(): Anthropic {
+let client: GoogleGenAI | null = null;
+function getClient(): GoogleGenAI {
   if (!isLlmConfigured) {
-    throw new HttpError(503, "The AI service isn't configured on the server. Set ANTHROPIC_API_KEY.", "not_configured");
+    throw new HttpError(503, "The AI service isn't configured on the server. Set GEMINI_API_KEY.", "not_configured");
   }
-  client ??= new Anthropic({ apiKey: config.anthropicApiKey, maxRetries: 2, timeout: 90_000 });
+  client ??= new GoogleGenAI({ apiKey: config.geminiApiKey, httpOptions: { timeout: 90_000 } });
   return client;
 }
 
 type Effort = "low" | "medium" | "high";
+const THINKING_BUDGET: Record<Effort, number> = { low: 0, medium: 1024, high: 4096 };
+
+export interface LlmMessage {
+  role: "user" | "assistant";
+  content: string;
+}
 
 /**
- * One Claude call that returns JSON matching `schema`, validated with zod.
+ * One Gemini call that returns JSON matching `jsonSchema`, validated with zod.
  * Never logs prompt or response content (they contain the user's thoughts).
  */
 async function structured<T>(opts: {
   task: string;
   system: string;
-  messages: Anthropic.Beta.BetaMessageParam[];
+  messages: LlmMessage[];
   jsonSchema: Record<string, unknown>;
   validator: z.ZodType<T>;
   effort: Effort;
   maxTokens?: number;
 }): Promise<T> {
-  const anthropic = getClient();
-  let response: Anthropic.Beta.BetaMessage;
-  try {
-    response = await anthropic.beta.messages.create({
+  const ai = getClient();
+  const contents: Content[] = opts.messages.map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+
+  const call = (thinking: boolean) =>
+    ai.models.generateContent({
       model: config.model,
-      max_tokens: opts.maxTokens ?? 8000,
-      system: opts.system,
-      messages: opts.messages,
-      output_config: { effort: opts.effort, format: { type: "json_schema", schema: opts.jsonSchema } },
-      ...(config.llmFallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
+      contents,
+      config: {
+        systemInstruction: opts.system,
+        responseMimeType: "application/json",
+        responseJsonSchema: opts.jsonSchema,
+        maxOutputTokens: opts.maxTokens ?? 8000,
+        ...(thinking ? { thinkingConfig: { thinkingBudget: THINKING_BUDGET[opts.effort] } } : {}),
+      },
     });
+
+  let response: Awaited<ReturnType<typeof call>>;
+  try {
+    try {
+      response = await call(true);
+    } catch (err) {
+      // Some models reject a custom thinking budget; retry once with the model default.
+      if (err instanceof ApiError && err.status === 400 && /thinking/i.test(err.message)) response = await call(false);
+      else throw err;
+    }
   } catch (err) {
-    if (err instanceof Anthropic.AuthenticationError) {
-      console.error(`[llm] ${opts.task}: authentication failed`);
-      throw new HttpError(503, "The AI service rejected the server's API key.", "llm_auth");
-    }
-    if (err instanceof Anthropic.RateLimitError) {
-      console.error(`[llm] ${opts.task}: rate limited`);
-      throw new HttpError(503, "The AI service is busy right now. Please try again in a moment.", "llm_busy");
-    }
-    if (err instanceof Anthropic.APIError) {
-      console.error(`[llm] ${opts.task}: API error ${err.status ?? "network"}`);
+    if (err instanceof ApiError) {
+      console.error(`[llm] ${opts.task}: API error ${err.status}`);
+      if (err.status === 400 && /api key/i.test(err.message)) {
+        throw new HttpError(503, "The AI service rejected the server's API key.", "llm_auth");
+      }
+      if (err.status === 401 || err.status === 403) {
+        throw new HttpError(503, "The AI service rejected the server's API key.", "llm_auth");
+      }
+      if (err.status === 429) {
+        throw new HttpError(503, "The AI service is busy right now. Please try again in a moment.", "llm_busy");
+      }
+      if (err.status === 404) {
+        throw new HttpError(503, `The AI model "${config.model}" isn't available. Check GEMINI_MODEL.`, "llm_model");
+      }
       throw new HttpError(502, "The AI service couldn't be reached. Please try again.", "llm_error");
     }
-    throw err;
+    console.error(`[llm] ${opts.task}: network error`);
+    throw new HttpError(502, "The AI service couldn't be reached. Please try again.", "llm_error");
   }
 
-  if (response.stop_reason === "refusal") {
-    console.error(`[llm] ${opts.task}: refusal (${response.stop_details?.category ?? "uncategorized"})`);
+  const finish = response.candidates?.[0]?.finishReason;
+  if (response.promptFeedback?.blockReason || finish === FinishReason.SAFETY || finish === FinishReason.PROHIBITED_CONTENT) {
+    console.error(`[llm] ${opts.task}: blocked (${response.promptFeedback?.blockReason ?? finish})`);
     throw new HttpError(422, "The AI declined to process this text.", "llm_refusal");
   }
-  if (response.stop_reason === "max_tokens") {
-    console.error(`[llm] ${opts.task}: hit max_tokens`);
+  if (finish === FinishReason.MAX_TOKENS) {
+    console.error(`[llm] ${opts.task}: hit max tokens`);
     throw new HttpError(502, "The AI response was cut off. Please try again.", "llm_truncated");
   }
 
-  const text = response.content
-    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("");
   try {
-    return opts.validator.parse(JSON.parse(text));
+    return opts.validator.parse(JSON.parse(response.text ?? ""));
   } catch {
     console.error(`[llm] ${opts.task}: response did not match schema`);
     throw new HttpError(502, "The AI returned an unexpected response. Please try again.", "llm_bad_output");
@@ -79,7 +104,6 @@ const obj = (properties: Record<string, unknown>) => ({
   type: "object",
   properties,
   required: Object.keys(properties),
-  additionalProperties: false,
 });
 
 // ---------------------------------------------------------------------------
@@ -196,7 +220,7 @@ export async function answerQuestion(
   notes: NoteForLlm[],
   nowLocal: string,
 ): Promise<{ answer: string; used_notes: number[] }> {
-  const messages: Anthropic.Beta.BetaMessageParam[] = [];
+  const messages: LlmMessage[] = [];
   for (const turn of history.slice(-10)) {
     const last = messages[messages.length - 1];
     if (last && last.role === turn.role) continue; // keep strict alternation

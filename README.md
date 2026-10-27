@@ -4,9 +4,9 @@
 
 RecallDesk is a personal external memory. You type (or dictate with Wispr Flow) whatever is on your mind. RecallDesk:
 
-1. **Captures it.** Claude rewrites the raw thought as a concise, faithful note. Only that note and a timestamp are saved; the original text is never stored or logged.
+1. **Captures it.** Gemini rewrites the raw thought as a concise, faithful note. Only that note and a timestamp are saved; the original text is never stored or logged.
 2. **Remembers it.** Every note is indexed for both keyword search (Postgres full-text) and meaning (sentence embeddings + pgvector).
-3. **Recalls it.** *Ask RecallDesk* answers natural-language questions ("what was that rendering idea?") from your own notes only, with clickable source references. Daily and monthly summaries give a quick look back.
+3. **Recalls it.** *Ask RecallDesk* uses Gemini to answer natural-language questions ("what was that rendering idea?") from your own notes only, with clickable source references. Daily and monthly summaries give a quick look back.
 
 There are no folders, tags, categories, or task lists, by design.
 
@@ -23,7 +23,7 @@ supabase/ SQL migration: tables, RLS policies, hybrid search function
 ```
 Browser ──(Supabase Auth: email + password)──► Supabase
    │
-   └─ /api/* with the user's JWT ──► Express API ──► Claude (summarize · plan · answer · summaries)
+   └─ /api/* with the user's JWT ──► Express API ──► Gemini (summarize · plan · answer · summaries)
                                          │
                                          ├─ local embeddings (all-MiniLM-L6-v2, 384-d)
                                          └─ Supabase Postgres AS THAT USER (anon key + JWT ⇒ RLS enforced)
@@ -33,14 +33,14 @@ Browser ──(Supabase Auth: email + password)──► Supabase
 
 - The API never uses a service-role key. Each request builds a Supabase client from the *user's own JWT*, so Postgres Row Level Security applies to every read and write. Even a bug in the API can't read another user's rows.
 - RLS policies let users select/insert/update/delete only rows where `user_id = auth.uid()`. The `search_thoughts` function is `SECURITY INVOKER` and also filters on `auth.uid()`.
-- The Anthropic key lives only on the server. The Supabase *anon* key is public by design.
+- The Gemini API key lives only on the server. The Supabase *anon* key is public by design.
 - Raw captures exist only in memory during the request. Logs record error codes, never thought content.
 
 **How Ask RecallDesk retrieves (it never sends all your notes to the model)**
 
-1. *Plan*: Claude rewrites the question as a standalone question, using the conversation for follow-ups like "what about the other one?". It also extracts search terms and synonyms, and resolves dates such as "yesterday" or "this month" into a date range.
+1. *Plan*: Gemini rewrites the question as a standalone question, using the conversation for follow-ups like "what about the other one?". It also extracts search terms and synonyms, and resolves dates such as "yesterday" or "this month" into a date range.
 2. *Retrieve*: the `search_thoughts` Postgres function runs a **hybrid search** over only that user's notes. It combines prefix-matched full-text search with pgvector cosine similarity using Reciprocal Rank Fusion, and keeps the top 8. Period questions ("what did I capture yesterday?") read that date range instead (up to 60 notes).
-3. *Answer*: Claude answers from those notes only, says plainly when nothing relevant exists, and returns the notes it used. These become the clickable sources.
+3. *Answer*: Gemini answers from those notes only, says plainly when nothing relevant exists, and returns the notes it used. These become the clickable sources.
 
 Summaries are generated on demand from the notes in the chosen day or month. They're cached in a `summaries` table keyed by a hash of the underlying notes, so they regenerate automatically when notes change. A **Regenerate** button forces a refresh.
 
@@ -52,7 +52,7 @@ Summaries are generated on demand from the notes in the chosen day or month. The
 
 - Node.js 20+ (tested on 22)
 - A free [Supabase](https://supabase.com) account
-- An [Anthropic API key](https://console.anthropic.com/settings/keys)
+- A [Gemini API key](https://aistudio.google.com/apikey) (free tier works)
 
 ### 2. Create the Supabase project
 
@@ -76,12 +76,11 @@ cp .env.example .env
 |---|---|---|
 | `SUPABASE_URL` | server | Supabase Project URL |
 | `SUPABASE_ANON_KEY` | server | Supabase anon/public key |
-| `ANTHROPIC_API_KEY` | server (secret) | your Anthropic key |
+| `GEMINI_API_KEY` | server (secret) | your Gemini API key |
 | `VITE_SUPABASE_URL` | browser | same Project URL |
 | `VITE_SUPABASE_ANON_KEY` | browser | same anon key |
 | `VITE_API_URL` | browser | empty locally; your API's URL in production |
-| `ANTHROPIC_MODEL` | server, optional | defaults to `claude-opus-5-5` |
-| `LLM_FALLBACKS` | server, optional | `true` (default) enables Anthropic's server-side refusal fallbacks |
+| `GEMINI_MODEL` | server, optional | defaults to `gemini-flash-latest` |
 | `EMBEDDINGS_ENABLED` | server, optional | `true` (default); `false` = keyword-only search |
 | `CORS_ORIGINS` | server, optional | comma-separated allowed origins (default `http://localhost:5173`) |
 | `API_PORT` / `PORT` | server, optional | default `8787` (`API_PORT` takes precedence; hosts usually set `PORT`) |
@@ -134,7 +133,7 @@ Sample captures (used by the opt-in seed button):
 1. New **Web Service** from this repo.
 2. Build command: `npm install && npm run build -w server`
 3. Start command: `node server/dist/index.js`
-4. Environment: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `ANTHROPIC_API_KEY`, `CORS_ORIGINS=https://<your-app>.vercel.app`.
+4. Environment: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GEMINI_API_KEY`, `CORS_ORIGINS=https://<your-app>.vercel.app`.
    Render sets `PORT` automatically.
 
 Use an instance with at least 512 MB of RAM for the embedding model. With less, set `EMBEDDINGS_ENABLED=false` to fall back to keyword search.
