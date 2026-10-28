@@ -8,7 +8,9 @@ RecallDesk is a personal external memory. You type (or dictate with Wispr Flow) 
 2. **Remembers it.** Every note is indexed for both keyword search (Postgres full-text) and meaning (sentence embeddings + pgvector).
 3. **Recalls it.** *Ask RecallDesk* uses Gemini to answer natural-language questions ("what was that rendering idea?") from your own notes only, with clickable source references. Daily and monthly summaries give a quick look back.
 
-There are no folders, tags, categories, or task lists, by design.
+4. **Lets you park it.** *Park it* is a private place to set a thought down, such as a worry or a loop you don't want to keep holding. It's **end-to-end encrypted in your browser** with a secret code only you know. RecallDesk's server, the AI, and the database only ever see ciphertext, and parked thoughts never appear in search, Ask, or summaries.
+
+Thoughts can be ticked off like a task list (they move into a collapsible *Completed* section), but there are no folders, tags, or categories, by design.
 
 ---
 
@@ -46,6 +48,13 @@ Summaries are generated on demand from the notes in the chosen day or month. The
 
 ---
 
+### How *Park it* encryption works
+
+- On first use you choose a secret code. The browser generates an RSA-OAEP-3072 key pair; the private key is encrypted with AES-256-GCM under a key derived from your code (PBKDF2-SHA256, 600,000 iterations). The code is never stored or transmitted.
+- Parking a thought needs **no code**: the browser encrypts it with a fresh AES-256-GCM key, wraps that key with your public key, and saves only ciphertext straight to Supabase (RLS-protected). It never passes through the RecallDesk API.
+- Reading parked thoughts requires the code. Decrypted text lives only in memory while the list is unlocked.
+- A forgotten code can't be recovered by anyone; the only option is *Start over*, which deletes all parked thoughts.
+
 ## Setup
 
 ### 1. Prerequisites
@@ -60,6 +69,7 @@ Summaries are generated on demand from the notes in the chosen day or month. The
 2. Open **SQL Editor → New query**, paste the whole contents of
    [`supabase/migrations/20261027000000_init.sql`](supabase/migrations/20261027000000_init.sql), and click **Run**.
    This enables `pgvector` and creates the `thoughts`, `chat_messages` and `summaries` tables, their RLS policies, and the `search_thoughts` function.
+   Then run the other files in `supabase/migrations/` **in filename order** the same way (checkbox support and *Park it*).
    *(With the Supabase CLI instead: `npx supabase link --project-ref <ref>` then `npx supabase db push`.)*
 3. **Authentication → Sign In / Providers → Email**: make sure Email is enabled.
    - For a frictionless hackathon demo, turn **Confirm email** *off*. Otherwise new users must click the confirmation link before signing in (the app handles both).
@@ -80,7 +90,8 @@ cp .env.example .env
 | `VITE_SUPABASE_URL` | browser | same Project URL |
 | `VITE_SUPABASE_ANON_KEY` | browser | same anon key |
 | `VITE_API_URL` | browser | empty locally; your API's URL in production |
-| `GEMINI_MODEL` | server, optional | defaults to `gemini-flash-latest` |
+| `GEMINI_MODEL` | server, optional | defaults to `gemini-2.5-flash` |
+| `GEMINI_FALLBACK_MODELS` | server, optional | comma-separated models tried when the main one is overloaded (default `gemini-3.5-flash,gemini-3.1-flash-lite`) |
 | `EMBEDDINGS_ENABLED` | server, optional | `true` (default); `false` = keyword-only search |
 | `CORS_ORIGINS` | server, optional | comma-separated allowed origins (default `http://localhost:5173`) |
 | `API_PORT` / `PORT` | server, optional | default `8787` (`API_PORT` takes precedence; hosts usually set `PORT`) |
@@ -126,26 +137,19 @@ Sample captures (used by the opt-in seed button):
 
 ---
 
-## Deployment
+## Deployment (one service on Render, free)
 
-### Backend (Render, as an example)
+In production the Express server also serves the built website, so RecallDesk deploys as **one web service with one URL** (no CORS setup needed). [`render.yaml`](render.yaml) describes it.
 
-1. New **Web Service** from this repo.
-2. Build command: `npm install && npm run build -w server`
-3. Start command: `node server/dist/index.js`
-4. Environment: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GEMINI_API_KEY`, `CORS_ORIGINS=https://<your-app>.vercel.app`.
-   Render sets `PORT` automatically.
+1. Push this repo to GitHub.
+2. On [render.com](https://render.com), choose **New → Blueprint**, pick the repo, and Render reads `render.yaml`.
+3. Fill in the five secret values when asked: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GEMINI_API_KEY`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+4. When the deploy finishes, open the `https://<name>.onrender.com` URL.
+5. In Supabase, go to **Authentication → URL Configuration**, set **Site URL** to that URL, and add it to **Redirect URLs**.
 
-Use an instance with at least 512 MB of RAM for the embedding model. With less, set `EMBEDDINGS_ENABLED=false` to fall back to keyword search.
+Notes: Render's free tier sleeps after ~15 minutes idle; the first visit afterwards takes about a minute to wake up, so open the link shortly before a demo. The first capture after a restart also downloads the small embedding model once.
 
-### Frontend (Vercel)
-
-1. Import the repo. Set **Root Directory** to `client` (framework: Vite).
-2. Environment: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL=https://<your-api>.onrender.com`.
-3. Deploy. `client/vercel.json` rewrites routes to the SPA.
-4. Add the Vercel URL to Supabase **Site URL / Redirect URLs** and to the API's `CORS_ORIGINS`.
-
----
+Manual equivalent (any Node host): build with `npm ci --include=dev && npm run build`, start with `npm start`, and set the same environment variables.
 
 ## API reference
 
@@ -166,6 +170,8 @@ All routes require `Authorization: Bearer <supabase access token>`.
 
 | Table | Columns |
 |---|---|
-| `thoughts` | `id`, `user_id`, `content` (concise note only), `created_at`, `updated_at`, `embedding vector(384)`, `fts tsvector` (generated) |
+| `thoughts` | `id`, `user_id`, `content` (concise note only), `created_at`, `updated_at`, `done_at` (ticked off), `embedding vector(384)`, `fts tsvector` (generated) |
 | `chat_messages` | `id`, `user_id`, `role`, `content`, `source_ids uuid[]`, `created_at` |
+| `park_keys` | `user_id`, `public_key`, `wrapped_private_key`, `wrap_iv`, `salt`, `iterations` (the code itself is never stored) |
+| `parked_thoughts` | `id`, `user_id`, `ciphertext`, `iv`, `wrapped_key`, `created_at` (ciphertext only) |
 | `summaries` | `id`, `user_id`, `period_type`, `period_key`, `content`, `thought_ids`, `source_hash`, `created_at` (a cache, always regenerable) |

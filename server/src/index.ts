@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { config, isLlmConfigured, isSupabaseConfigured } from "./config.js";
@@ -31,6 +34,14 @@ app.use("/api/demo", requireUser, demoRouter);
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: { message: "Not found.", code: "not_found" } });
 });
+
+// In production the API also serves the built website, so the whole app is one service and one URL.
+const clientDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/dist");
+if (fs.existsSync(path.join(clientDist, "index.html"))) {
+  app.use(express.static(clientDist, { index: false, maxAge: "1h" }));
+  // Client-side routes (/thoughts, /ask, ...) all load the single-page app.
+  app.get(/^(?!\/api\/).*/, (_req, res) => res.sendFile(path.join(clientDist, "index.html")));
+}
 
 // Central error handler. Never echoes request bodies (they contain user thoughts).
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

@@ -7,6 +7,15 @@ export interface Thought {
   content: string;
   created_at: string;
   updated_at?: string | null;
+  done_at?: string | null;
+  topics?: string[];
+}
+
+export interface TopicChange {
+  id: string;
+  content: string;
+  from: string[];
+  to: string[];
 }
 
 export interface SourceRef {
@@ -78,17 +87,28 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const api = {
   health: () => request<{ ok: boolean; database: boolean; ai: boolean; embeddings: boolean }>("/api/health"),
 
-  listThoughts: (params: { q?: string; before?: string | null; limit?: number } = {}) => {
+  listThoughts: (params: { q?: string; before?: string | null; limit?: number; status?: "active" | "done" } = {}) => {
     const qs = new URLSearchParams();
     if (params.q) qs.set("q", params.q);
+    if (params.status) qs.set("status", params.status);
     if (params.before) qs.set("before", params.before);
     if (params.limit) qs.set("limit", String(params.limit));
-    return request<{ thoughts: Thought[]; nextCursor: string | null; mode: "list" | "search" }>(`/api/thoughts?${qs}`);
+    return request<{ thoughts: Thought[]; nextCursor: string | null; mode: "list" | "search"; total: number }>(`/api/thoughts?${qs}`);
   },
   getThought: (id: string) => request<{ thought: Thought }>(`/api/thoughts/${encodeURIComponent(id)}`),
   capture: (text: string) => request<{ thought: Thought }>("/api/thoughts", { method: "POST", body: JSON.stringify({ text }) }),
   updateThought: (id: string, content: string) =>
     request<{ thought: Thought }>(`/api/thoughts/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ content }) }),
+  reorganizePreview: (instruction: string) =>
+    request<{ reply: string; changes: TopicChange[] }>("/api/thoughts/reorganize/preview", {
+      method: "POST",
+      body: JSON.stringify({ instruction }),
+    }),
+  reorganizeApply: (changes: { id: string; topics: string[] }[]) =>
+    request<{ updated: number }>("/api/thoughts/reorganize/apply", { method: "POST", body: JSON.stringify({ changes }) }),
+  categorize: () => request<{ organized: number }>("/api/thoughts/categorize", { method: "POST" }),
+  setDone: (id: string, done: boolean) =>
+    request<{ thought: Thought }>(`/api/thoughts/${encodeURIComponent(id)}/done`, { method: "PATCH", body: JSON.stringify({ done }) }),
   deleteThought: (id: string) => request<void>(`/api/thoughts/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   chatHistory: () => request<{ messages: ChatMessage[] }>("/api/ask/history"),

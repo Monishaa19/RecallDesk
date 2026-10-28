@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
-import { api, ApiError, type SummaryResponse } from "../lib/api";
+import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { api, ApiError, type SummaryResponse, type Thought } from "../lib/api";
 import { localDateKey, localMonthKey } from "../lib/format";
-import { ThoughtCard } from "../components/ThoughtCard";
+import { CompletedSection, splitDone, ThoughtCard } from "../components/ThoughtCard";
 import { useThoughtsChanged } from "../components/ThoughtDialog";
 import { EmptyState, ErrorNotice, RichText, Skeleton, Spinner } from "../components/ui";
 
@@ -78,7 +78,6 @@ export function SummariesPage() {
   const [data, setData] = useState<SummaryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showThoughts, setShowThoughts] = useState(false);
 
   const key = mode === "day" ? day : month;
   const today = localDateKey();
@@ -101,7 +100,6 @@ export function SummariesPage() {
   );
 
   useEffect(() => {
-    setShowThoughts(false);
     void load();
   }, [load]);
   useThoughtsChanged(() => void load());
@@ -120,6 +118,11 @@ export function SummariesPage() {
   const next = () => (mode === "day" ? setDay(shiftDay(day, 1)) : setMonth(shiftMonth(month, 1)));
   const atLatest = mode === "day" ? day >= today : month >= thisMonth;
   const count = data?.thoughts.length ?? 0;
+  const sources = data ? splitDone(data.thoughts) : null;
+
+  // Ticking a thought here only changes its status; the summary text stays as generated.
+  const onToggled = (updated: Thought) =>
+    setData((d) => (d ? { ...d, thoughts: d.thoughts.map((t) => (t.id === updated.id ? updated : t)) } : d));
 
   return (
     <div className="mx-auto max-w-2xl px-4 pt-10 pb-16 sm:px-6 md:pt-16">
@@ -198,14 +201,9 @@ export function SummariesPage() {
           <article className="card animate-fade-up p-6 sm:p-7">
             <RichText text={data.summary} className="font-serif text-[19px] leading-[1.6] text-ink" />
             <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-              <button
-                onClick={() => setShowThoughts((s) => !s)}
-                className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-muted hover:text-ink"
-                aria-expanded={showThoughts}
-              >
+              <p className="text-sm text-muted">
                 Based on {count} {count === 1 ? "thought" : "thoughts"}
-                <ChevronDown className={`size-4 transition ${showThoughts ? "rotate-180" : ""}`} />
-              </button>
+              </p>
               <button onClick={() => load(true)} disabled={loading} className="btn-ghost -mr-2 px-3 py-1.5 text-xs text-muted">
                 {loading ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} Regenerate
               </button>
@@ -213,14 +211,26 @@ export function SummariesPage() {
           </article>
         )}
 
-        {data?.summary && showThoughts && (
-          <ul className="animate-fade-in mt-4 space-y-2.5">
-            {data.thoughts.map((t) => (
-              <li key={t.id}>
-                <ThoughtCard thought={t} compact />
-              </li>
-            ))}
-          </ul>
+        {data?.summary && sources && (
+          <div className="animate-fade-in mt-8">
+            <h2 className="mb-3 flex items-baseline justify-between text-xs font-medium uppercase tracking-[0.08em] text-faint">
+              <span>{mode === "day" ? "Thoughts from this day" : "Thoughts from this month"}</span>
+              <span className="normal-case tracking-normal">
+                {sources.open.length} open · {sources.done.length} done
+              </span>
+            </h2>
+            <ul className="space-y-2.5">
+              {sources.open.map((t) => (
+                <li key={t.id}>
+                  <ThoughtCard thought={t} compact onToggled={onToggled} />
+                </li>
+              ))}
+            </ul>
+            {sources.open.length === 0 && (
+              <p className="px-1 text-sm text-muted">Everything from {mode === "day" ? "this day" : "this month"} is ticked off.</p>
+            )}
+            <CompletedSection thoughts={sources.done} onToggled={onToggled} compact />
+          </div>
         )}
       </section>
     </div>

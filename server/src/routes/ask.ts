@@ -88,7 +88,7 @@ askRouter.post("/", async (req, res) => {
   }
 
   // 3. Answer grounded in those notes.
-  const forLlm: NoteForLlm[] = notes.map((n, i) => ({ ref: i + 1, when: formatLocal(n.created_at, tz), content: n.content }));
+  const forLlm: NoteForLlm[] = notes.map((n, i) => ({ ref: i + 1, when: formatLocal(n.created_at, tz), content: `${n.topics?.length ? `[${n.topics.join(", ")}] ` : ""}${n.content}${n.done_at ? " (checked off as done)" : ""}` }));
   const result = await answerQuestion(history, question, forLlm, nowLocal);
   const sourceIds = [...new Set(result.used_notes)]
     .filter((ref) => ref >= 1 && ref <= notes.length)
@@ -99,7 +99,8 @@ askRouter.post("/", async (req, res) => {
   const { data: saved, error: saveError } = await db
     .from("chat_messages")
     .insert([
-      { role: "user", content: question, created_at: new Date(askedAt).toISOString() },
+      // Bulk inserts send every column for every row, so set source_ids explicitly (no default applies).
+      { role: "user", content: question, source_ids: [], created_at: new Date(askedAt).toISOString() },
       {
         role: "assistant",
         content: result.answer.slice(0, 8000),

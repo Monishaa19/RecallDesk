@@ -8,7 +8,12 @@ export const config = {
   supabaseUrl: env("SUPABASE_URL"),
   supabaseAnonKey: env("SUPABASE_ANON_KEY"),
   geminiApiKey: env("GEMINI_API_KEY"),
-  model: env("GEMINI_MODEL", "gemini-flash-latest"),
+  model: env("GEMINI_MODEL", "gemini-2.5-flash"),
+  // Tried in order when the primary model is overloaded (503) or rate limited (429).
+  fallbackModels: env("GEMINI_FALLBACK_MODELS", "gemini-3.5-flash,gemini-3.1-flash-lite")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
   embeddingsEnabled: env("EMBEDDINGS_ENABLED", "true") !== "false",
   embeddingModel: env("EMBEDDING_MODEL", "Xenova/all-MiniLM-L6-v2"),
   corsOrigins: env("CORS_ORIGINS", "http://localhost:5173")

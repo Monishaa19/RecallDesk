@@ -8,6 +8,8 @@ import { addDays, dayRange, formatLocal, isDate, isMonth, monthRange, parseTzOff
 
 export const summariesRouter = Router();
 
+const SUMMARY_FORMAT = "prose-v2";
+
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -67,8 +69,9 @@ summariesRouter.get("/", async (req, res) => {
   }
 
   // The cache is valid only while the underlying thoughts are unchanged.
+  // Bump SUMMARY_FORMAT when the summary style changes so cached summaries regenerate.
   const sourceHash = createHash("sha256")
-    .update(thoughts.map((t) => `${t.id}:${t.updated_at ?? t.created_at}`).join("|"))
+    .update(SUMMARY_FORMAT + "|" + thoughts.map((t) => `${t.id}:${t.updated_at ?? t.created_at}`).join("|"))
     .digest("hex");
 
   if (!refresh) {

@@ -12,6 +12,7 @@ import { CapturePage } from "./pages/CapturePage";
 import { ThoughtsPage } from "./pages/ThoughtsPage";
 import { AskPage } from "./pages/AskPage";
 import { SummariesPage } from "./pages/SummariesPage";
+import { ParkPage } from "./pages/ParkPage";
 
 function App() {
   const { session, loading } = useAuth();
@@ -31,6 +32,7 @@ function App() {
         <Route path="thoughts" element={<ThoughtsPage />} />
         <Route path="ask" element={<AskPage />} />
         <Route path="summaries" element={<SummariesPage />} />
+        <Route path="park" element={<ParkPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
