@@ -56,3 +56,31 @@ export function greeting(): string {
   if (h < 18) return "Good afternoon";
   return "Good evening";
 }
+
+/** Parse a YYYY-MM-DD calendar date as a local date (no timezone shift). */
+export const parseDateKey = (key: string) => {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
+
+/** "Today", "Tomorrow", or e.g. "Fri, Oct 31" for a YYYY-MM-DD calendar date. */
+export function formatEventDate(key: string): string {
+  const d = parseDateKey(key);
+  const today = new Date();
+  if (sameDay(d, today)) return "Today";
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  if (sameDay(d, tomorrow)) return "Tomorrow";
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(d.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}),
+  });
+}
+
+/** "14:30" -> "2:30 PM" in the person's locale. */
+export function formatEventTime(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}

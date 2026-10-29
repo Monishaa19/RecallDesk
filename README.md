@@ -8,7 +8,8 @@ RecallDesk is a personal external memory. You type (or dictate with Wispr Flow) 
 2. **Remembers it.** Every note is indexed for both keyword search (Postgres full-text) and meaning (sentence embeddings + pgvector).
 3. **Recalls it.** *Ask RecallDesk* uses Gemini to answer natural-language questions ("what was that rendering idea?") from your own notes only, with clickable source references. Daily and monthly summaries give a quick look back.
 
-4. **Lets you park it.** *Park it* is a private place to set a thought down, such as a worry or a loop you don't want to keep holding. It's **end-to-end encrypted in your browser** with a secret code only you know. RecallDesk's server, the AI, and the database only ever see ciphertext, and parked thoughts never appear in search, Ask, or summaries.
+4. **Puts dates on your calendar.** Say "DBMS assignment due this Friday" or "interview next Monday at 3" while capturing, and Gemini works out the actual date and adds it to RecallDesk's built-in **Calendar** page. No Google Calendar connection is needed. Vague timing ("sometime next week") is never guessed into a date.
+5. **Lets you park it.** *Park it* is a private place to set a thought down, such as a worry or a loop you don't want to keep holding. It's **end-to-end encrypted in your browser** with a secret code only you know. RecallDesk's server, the AI, and the database only ever see ciphertext, and parked thoughts never appear in search, Ask, or summaries.
 
 Thoughts can be ticked off like a task list (they move into a collapsible *Completed* section), but there are no folders, tags, or categories, by design.
 
@@ -77,7 +78,7 @@ Every text box (Capture, Ask, Park it, Reorganize) has a **mic button**, so voic
 2. Open **SQL Editor → New query**, paste the whole contents of
    [`supabase/migrations/20261027000000_init.sql`](supabase/migrations/20261027000000_init.sql), and click **Run**.
    This enables `pgvector` and creates the `thoughts`, `chat_messages` and `summaries` tables, their RLS policies, and the `search_thoughts` function.
-   Then run the other files in `supabase/migrations/` **in filename order** the same way (checkbox support and *Park it*).
+   Then run the other files in `supabase/migrations/` **in filename order** the same way (checkbox support, *Park it*, topics and the calendar).
    *(With the Supabase CLI instead: `npx supabase link --project-ref <ref>` then `npx supabase db push`.)*
 3. **Authentication → Sign In / Providers → Email**: make sure Email is enabled.
    - For a frictionless hackathon demo, turn **Confirm email** *off*. Otherwise new users must click the confirmation link before signing in (the app handles both).
@@ -165,13 +166,15 @@ All routes require `Authorization: Bearer <supabase access token>`.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/thoughts` `{text}` | Summarize, embed and save a capture. Returns the saved note. |
+| `POST` | `/api/thoughts` `{text, tzOffset}` | Summarize, embed and save a capture; any dates mentioned go on the calendar. Returns the note and the calendar events. |
 | `GET` | `/api/thoughts?q=&before=&limit=` | List (newest first, cursor) or hybrid search |
 | `GET/PATCH/DELETE` | `/api/thoughts/:id` | Read, edit (re-embeds), delete |
 | `POST` | `/api/ask` `{question, tzOffset}` | Plan → retrieve → grounded answer with sources |
 | `GET/DELETE` | `/api/ask/history` | Conversation history / start over |
 | `GET` | `/api/summaries?type=day\|month&key=&tzOffset=&refresh=1` | Daily/monthly summary + source thoughts |
 | `GET` | `/api/summaries/activity?month=` | Days with captures (for the date strip) |
+| `GET` | `/api/calendar?from=&to=` · `/api/calendar/upcoming?from=` | Calendar events in a date range / coming up |
+| `POST/PATCH/DELETE` | `/api/calendar[/:id]` `{title, date, time?, kind?}` | Add, change or remove a calendar event by hand |
 | `POST` | `/api/demo/seed` | Opt-in: capture the 5 sample thoughts for the current user |
 
 ## Data model
@@ -182,4 +185,5 @@ All routes require `Authorization: Bearer <supabase access token>`.
 | `chat_messages` | `id`, `user_id`, `role`, `content`, `source_ids uuid[]`, `created_at` |
 | `park_keys` | `user_id`, `public_key`, `wrapped_private_key`, `wrap_iv`, `salt`, `iterations` (the code itself is never stored) |
 | `parked_thoughts` | `id`, `user_id`, `ciphertext`, `iv`, `wrapped_key`, `created_at` (ciphertext only) |
+| `calendar_events` | `id`, `user_id`, `thought_id` (source capture; removed with it), `title`, `event_date`, `event_time`, `kind`, `created_at` |
 | `summaries` | `id`, `user_id`, `period_type`, `period_key`, `content`, `thought_ids`, `source_hash`, `created_at` (a cache, always regenerable) |

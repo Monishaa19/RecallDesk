@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { auth } from "../supabase.js";
+import { parseTzOffset } from "../time.js";
 import { captureThought, type Thought } from "../thoughts.js";
 
 /**
@@ -24,7 +25,7 @@ demoRouter.post("/seed", async (req, res) => {
   // Sequential so timestamps keep the sample order.
   for (const [i, text] of DEMO_CAPTURES.entries()) {
     try {
-      saved.push(await captureThought(db, text));
+      saved.push((await captureThought(db, text, parseTzOffset(req.body?.tzOffset))).thought);
     } catch {
       failed.push(i);
     }

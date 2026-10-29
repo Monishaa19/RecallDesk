@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Sparkles } from "lucide-react";
-import { api, ApiError, type Thought } from "../lib/api";
-import { greeting } from "../lib/format";
+import { ArrowRight, CalendarPlus, Sparkles } from "lucide-react";
+import { api, ApiError, type CalendarEvent, type Thought } from "../lib/api";
+import { formatEventDate, formatEventTime, greeting } from "../lib/format";
 import { ThoughtCard } from "../components/ThoughtCard";
 import { MicButton } from "../components/MicButton";
 import { notifyThoughtsChanged, useThoughtsChanged } from "../components/ThoughtDialog";
@@ -17,6 +17,7 @@ export function CapturePage() {
   const [capturing, setCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState<string | null>(null);
+  const [addedEvents, setAddedEvents] = useState<CalendarEvent[]>([]);
   const [recent, setRecent] = useState<Thought[] | null>(null);
   const [recentError, setRecentError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
@@ -49,13 +50,19 @@ export function CapturePage() {
     if (!text.trim() || capturing) return;
     setCapturing(true);
     setCaptureError(null);
+    setAddedEvents([]);
     try {
-      const { thought } = await api.capture(text);
+      const { thought, events = [] } = await api.capture(text);
       // Only now has the database confirmed the save.
       setText("");
       setJustSaved(thought.id);
+      setAddedEvents(events);
       setRecent((r) => [thought, ...(r ?? [])].slice(0, RECENT_COUNT));
-      toast("Thought captured.");
+      toast(
+        events.length
+          ? `Thought captured. Added ${events.length === 1 ? "1 date" : `${events.length} dates`} to your calendar.`
+          : "Thought captured.",
+      );
       notifyThoughtsChanged();
       textareaRef.current?.focus();
     } catch (e) {
@@ -131,6 +138,26 @@ export function CapturePage() {
       </section>
 
       {captureError && <ErrorNotice className="mt-4" message={captureError} onRetry={capture} />}
+
+      {addedEvents.length > 0 && (
+        <div className="animate-fade-up mt-4 rounded-2xl border border-accent/25 bg-accent-soft/60 px-4 py-3">
+          <p className="flex items-center gap-2 text-sm font-medium text-accent-ink">
+            <CalendarPlus className="size-4" /> Added to your calendar
+          </p>
+          <ul className="mt-2 space-y-1">
+            {addedEvents.map((e) => (
+              <li key={e.id} className="flex flex-wrap items-baseline gap-x-2 text-sm text-ink-soft">
+                <span className="font-medium text-ink">{formatEventDate(e.event_date)}</span>
+                {e.event_time && <span className="text-muted">{formatEventTime(e.event_time)}</span>}
+                <span>{e.title}</span>
+              </li>
+            ))}
+          </ul>
+          <Link to={`/calendar?date=${addedEvents[0].event_date}`} className="mt-2 inline-flex items-center gap-1 text-sm text-accent hover:underline">
+            Open calendar <ArrowRight className="size-3.5" />
+          </Link>
+        </div>
+      )}
 
       <section className="mt-14" aria-labelledby="recent-heading">
         <div className="mb-4 flex items-baseline justify-between">

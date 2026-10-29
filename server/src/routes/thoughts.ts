@@ -4,6 +4,7 @@ import { embed, toVector } from "../embeddings.js";
 import { badRequest, dbError, notFound } from "../errors.js";
 import { auth } from "../supabase.js";
 import { normalizeTopics, planReorganize } from "../llm.js";
+import { parseTzOffset } from "../time.js";
 import { captureThought, categorizeUntagged, searchThoughts, THOUGHT_COLUMNS } from "../thoughts.js";
 
 export const thoughtsRouter = Router();
@@ -126,8 +127,7 @@ thoughtsRouter.get("/:id", async (req, res) => {
 thoughtsRouter.post("/", async (req, res) => {
   const { db } = auth(req);
   const text = typeof req.body?.text === "string" ? req.body.text : "";
-  const thought = await captureThought(db, text);
-  res.status(201).json({ thought });
+  res.status(201).json(await captureThought(db, text, parseTzOffset(req.body?.tzOffset)));
 });
 
 thoughtsRouter.patch("/:id", async (req, res) => {

@@ -11,6 +11,19 @@ export interface Thought {
   topics?: string[];
 }
 
+export type EventKind = "deadline" | "exam" | "meeting" | "appointment" | "reminder" | "event";
+
+export interface CalendarEvent {
+  id: string;
+  thought_id: string | null;
+  title: string;
+  event_date: string;
+  event_time: string | null;
+  kind: EventKind;
+  created_at: string;
+  thought?: { id: string; content: string; done_at: string | null } | null;
+}
+
 export interface TopicChange {
   id: string;
   content: string;
@@ -96,7 +109,11 @@ export const api = {
     return request<{ thoughts: Thought[]; nextCursor: string | null; mode: "list" | "search"; total: number }>(`/api/thoughts?${qs}`);
   },
   getThought: (id: string) => request<{ thought: Thought }>(`/api/thoughts/${encodeURIComponent(id)}`),
-  capture: (text: string) => request<{ thought: Thought }>("/api/thoughts", { method: "POST", body: JSON.stringify({ text }) }),
+  capture: (text: string) =>
+    request<{ thought: Thought; events: CalendarEvent[] }>("/api/thoughts", {
+      method: "POST",
+      body: JSON.stringify({ text, tzOffset: tzOffset() }),
+    }),
   updateThought: (id: string, content: string) =>
     request<{ thought: Thought }>(`/api/thoughts/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ content }) }),
   reorganizePreview: (instruction: string) =>
@@ -128,5 +145,16 @@ export const api = {
   transcribe: (audio: string, mimeType: string) =>
     request<{ text: string }>("/api/transcribe", { method: "POST", body: JSON.stringify({ audio, mimeType }) }),
 
-  seedDemo: () => request<{ saved: Thought[]; failed: number }>("/api/demo/seed", { method: "POST" }),
+  calendar: (from: string, to: string) => request<{ events: CalendarEvent[] }>(`/api/calendar?from=${from}&to=${to}`),
+  upcoming: (from: string, limit = 8) => request<{ events: CalendarEvent[] }>(`/api/calendar/upcoming?from=${from}&limit=${limit}`),
+  addEvent: (event: { title: string; date: string; time?: string | null; kind?: EventKind }) =>
+    request<{ event: CalendarEvent }>("/api/calendar", { method: "POST", body: JSON.stringify(event) }),
+  updateEvent: (id: string, patch: { title?: string; date?: string; time?: string | null; kind?: EventKind }) =>
+    request<{ event: CalendarEvent }>(`/api/calendar/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteEvent: (id: string) => request<void>(`/api/calendar/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  seedDemo: () => request<{ saved: Thought[]; failed: number }>("/api/demo/seed", {
+      method: "POST",
+      body: JSON.stringify({ tzOffset: tzOffset() }),
+    }),
 };

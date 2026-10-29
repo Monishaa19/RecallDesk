@@ -175,19 +175,85 @@ export function normalizeTopics(raw: string[], existing: string[]): string[] {
 const existingBlock = (existing: string[]) =>
   existing.length ? `<existing_topics>\n${existing.join("\n")}\n</existing_topics>` : "<existing_topics>(none yet)</existing_topics>";
 
-export async function condenseThought(raw: string, existingTopics: string[] = []): Promise<{ note: string; topics: string[] }> {
+const EVENT_RULES = `Calendar rules:
+- Also list "events": things the person said are happening or due on a specific day, e.g. deadlines, submissions, exams, interviews, meetings, appointments, birthdays, "remind me on ...".
+- Resolve relative dates ("tomorrow", "this Friday", "next Monday", "on the 5th", "end of this month") against <now>, which is the person's local date and time. "This <weekday>" / bare "<weekday>" means the next such day on or after today; "next <weekday>" means that weekday in the following week.
+- Only include an event when a specific day can be worked out. Skip vague timing ("soon", "next week", "someday", "in a few days").
+- Never invent dates or events. Past dates are fine if the person stated them.
+- title: a short label of 2-8 words, e.g. "DBMS assignment due", "Amazon interview", "Dentist appointment".
+- time: "HH:MM" in 24-hour time only if stated, otherwise "".
+- kind: one of deadline, exam, meeting, appointment, reminder, event.
+- Return an empty list when nothing is dated.`;
+
+export interface ExtractedEvent {
+  title: string;
+  date: string;
+  time: string | null;
+  kind: "deadline" | "exam" | "meeting" | "appointment" | "reminder" | "event";
+}
+
+const EVENT_KINDS = ["deadline", "exam", "meeting", "appointment", "reminder", "event"] as const;
+
+/** Keep only well-formed, plausible events (real dates within a sensible window). */
+function cleanEvents(raw: { title: string; date: string; time: string; kind: string }[], today: string): ExtractedEvent[] {
+  const out: ExtractedEvent[] = [];
+  const min = `${+today.slice(0, 4) - 1}${today.slice(4)}`;
+  const max = `${+today.slice(0, 4) + 3}${today.slice(4)}`;
+  for (const e of raw) {
+    const title = e.title.replace(/\s+/g, " ").trim().slice(0, 120);
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(e.date.trim());
+    if (!title || !m) continue;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    if (d.toISOString().slice(0, 10) !== e.date.trim() || e.date < min || e.date > max) continue;
+    const t = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(e.time.trim());
+    const kind = (EVENT_KINDS as readonly string[]).includes(e.kind) ? (e.kind as ExtractedEvent["kind"]) : "event";
+    if (out.some((o) => o.date === e.date && o.title.toLowerCase() === title.toLowerCase())) continue;
+    out.push({ title, date: e.date.trim(), time: t ? t[0] : null, kind });
+    if (out.length === 10) break;
+  }
+  return out;
+}
+
+export async function condenseThought(
+  raw: string,
+  existingTopics: string[] = [],
+  now?: { label: string; today: string },
+): Promise<{ note: string; topics: string[]; events: ExtractedEvent[] }> {
   const out = await structured({
     task: "condense",
-    system: `${CONDENSE_SYSTEM}\n\n${TOPIC_RULES}`,
-    messages: [{ role: "user", content: `${existingBlock(existingTopics)}\n\n<capture>\n${raw}\n</capture>` }],
+    system: `${CONDENSE_SYSTEM}\n\n${TOPIC_RULES}\n\n${EVENT_RULES}`,
+    messages: [
+      {
+        role: "user",
+        content: `${now ? `<now>${now.label}</now>\n\n` : ""}${existingBlock(existingTopics)}\n\n<capture>\n${raw}\n</capture>`,
+      },
+    ],
     jsonSchema: obj({
       note: { type: "string", description: "The concise note, or empty string." },
       topics: { type: "array", items: { type: "string" }, description: "1-3 topics, main topic first." },
+      events: {
+        type: "array",
+        description: "Dated things to put on the calendar; empty if none.",
+        items: obj({
+          title: { type: "string" },
+          date: { type: "string", description: "YYYY-MM-DD" },
+          time: { type: "string", description: "HH:MM or empty" },
+          kind: { type: "string", enum: [...EVENT_KINDS] },
+        }),
+      },
     }),
-    validator: z.object({ note: z.string(), topics: z.array(z.string()) }),
+    validator: z.object({
+      note: z.string(),
+      topics: z.array(z.string()),
+      events: z.array(z.object({ title: z.string(), date: z.string(), time: z.string(), kind: z.string() })),
+    }),
     effort: "low",
   });
-  return { note: out.note.trim(), topics: normalizeTopics(out.topics, existingTopics) };
+  return {
+    note: out.note.trim(),
+    topics: normalizeTopics(out.topics, existingTopics),
+    events: now && out.note.trim() ? cleanEvents(out.events, now.today) : [],
+  };
 }
 
 const REORGANIZE_SYSTEM = `You help a person reorganize how their saved notes are grouped into topics, following their spoken instruction (often dictated, informal, and vague, e.g. "this particular point", "the teammate one", "all of these").

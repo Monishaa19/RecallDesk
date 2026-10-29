@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { embed, toVector } from "./embeddings.js";
 import { badRequest, dbError, HttpError } from "./errors.js";
 import { categorizeNotes, condenseThought } from "./llm.js";
+import { formatLocal, todayLocal } from "./time.js";
 
 export interface Thought {
   id: string;
@@ -60,12 +61,17 @@ export const MAX_CAPTURE_CHARS = 8000;
  * The raw text is only held in memory for the duration of this call; it is
  * never written to the database or to logs.
  */
-export async function captureThought(db: SupabaseClient, raw: string): Promise<Thought> {
+export async function captureThought(
+  db: SupabaseClient,
+  raw: string,
+  tzOffset = 0,
+): Promise<{ thought: Thought; events: CalendarEvent[] }> {
   const text = raw.trim();
   if (!text) throw badRequest("Write a thought first.");
   if (text.length > MAX_CAPTURE_CHARS) throw badRequest(`That's a lot! Please keep a capture under ${MAX_CAPTURE_CHARS} characters.`);
 
-  const { note, topics } = await condenseThought(text, await existingTopics(db));
+  const now = { label: formatLocal(new Date(), tzOffset), today: todayLocal(tzOffset) };
+  const { note, topics, events } = await condenseThought(text, await existingTopics(db), now);
   if (!note) throw new HttpError(422, "We couldn't find a thought to save in that text. Try adding a little more detail.", "empty_note");
 
   const vector = await embed(note);
@@ -75,8 +81,32 @@ export async function captureThought(db: SupabaseClient, raw: string): Promise<T
     .select(THOUGHT_COLUMNS)
     .single();
   if (error || !data) throw dbError(error, "saving the thought");
-  return data as Thought;
+  const thought = data as Thought;
+
+  if (!events.length) return { thought, events: [] };
+  // The thought is already safe; a calendar hiccup shouldn't turn the capture into an error.
+  const { data: saved, error: evErr } = await db
+    .from("calendar_events")
+    .insert(events.map((e) => ({ thought_id: thought.id, title: e.title, event_date: e.date, event_time: e.time, kind: e.kind })))
+    .select(EVENT_COLUMNS);
+  if (evErr) {
+    console.error("[calendar] couldn't save events:", evErr.code, evErr.message);
+    return { thought, events: [] };
+  }
+  return { thought, events: (saved ?? []) as CalendarEvent[] };
 }
+
+export interface CalendarEvent {
+  id: string;
+  thought_id: string | null;
+  title: string;
+  event_date: string;
+  event_time: string | null;
+  kind: string;
+  created_at: string;
+}
+
+export const EVENT_COLUMNS = "id, thought_id, title, event_date, event_time, kind, created_at";
 
 export interface SearchHit extends Thought {
   score: number;
