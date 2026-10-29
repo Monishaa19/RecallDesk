@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Mic, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { api, ApiError, type Thought } from "../lib/api";
 import { greeting } from "../lib/format";
 import { ThoughtCard } from "../components/ThoughtCard";
+import { MicButton } from "../components/MicButton";
 import { notifyThoughtsChanged, useThoughtsChanged } from "../components/ThoughtDialog";
 import { useToast } from "../components/Toast";
 import { ErrorNotice, Skeleton, Spinner } from "../components/ui";
@@ -110,10 +111,10 @@ export function CapturePage() {
           className="block min-h-[136px] w-full resize-none bg-transparent px-5 pt-5 pb-2 text-[17px] leading-relaxed text-ink placeholder:text-faint focus:outline-none disabled:opacity-60"
         />
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line/70 bg-canvas/40 px-4 py-3">
-          <p className="flex items-center gap-1.5 text-xs text-faint">
-            <Mic className="size-3.5" strokeWidth={1.75} />
-            You can type or dictate using Wispr Flow.
-          </p>
+          <div className="flex items-center gap-3">
+            <MicButton value={text} onChange={setText} disabled={capturing} showLabel />
+            <p className="hidden text-xs text-faint sm:block">Tap to speak, or use Wispr Flow.</p>
+          </div>
           <div className="flex items-center gap-3">
             <kbd className="hidden text-[11px] text-faint sm:inline">Ctrl + Enter</kbd>
             <button onClick={capture} disabled={!text.trim() || capturing} className="btn-primary min-w-[118px]">

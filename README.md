@@ -48,6 +48,14 @@ Summaries are generated on demand from the notes in the chosen day or month. The
 
 ---
 
+### Voice input
+
+Every text box (Capture, Ask, Park it, Reorganize) has a **mic button**, so voice works for anyone, with or without Wispr Flow:
+
+- **Chrome, Edge, Safari:** the browser's built-in speech recognition. Words appear live as you speak, with no API key and no AI quota used.
+- **Other browsers (e.g. Firefox), or if live recognition fails:** the clip is recorded and sent to `POST /api/transcribe`, where Gemini transcribes it. Audio is held in memory only for that request and is never stored or logged.
+- Wispr Flow still works anywhere, since it simply types into the box.
+
 ### How *Park it* encryption works
 
 - On first use you choose a secret code. The browser generates an RSA-OAEP-3072 key pair; the private key is encrypted with AES-256-GCM under a key derived from your code (PBKDF2-SHA256, 600,000 iterations). The code is never stored or transmitted.

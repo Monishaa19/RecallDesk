@@ -3,6 +3,7 @@ import { ArrowUp, BookOpen, RotateCcw } from "lucide-react";
 import { api, ApiError, type ChatMessage, type SourceRef } from "../lib/api";
 import { formatWhen } from "../lib/format";
 import { useOpenThought } from "../components/ThoughtDialog";
+import { MicButton } from "../components/MicButton";
 import { useToast } from "../components/Toast";
 import { ErrorNotice, Logo, RichText, Skeleton } from "../components/ui";
 
@@ -216,6 +217,7 @@ export function AskPage() {
             aria-label="Ask a question"
             className="max-h-44 flex-1 resize-none bg-transparent py-2 text-[15px] leading-relaxed placeholder:text-faint focus:outline-none"
           />
+          <MicButton value={input} onChange={setInput} disabled={Boolean(pending)} />
           <button
             onClick={() => ask(input)}
             disabled={!input.trim() || Boolean(pending)}

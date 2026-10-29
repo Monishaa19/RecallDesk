@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowRight, Mic, RotateCcw, Sparkles, X } from "lucide-react";
+import { ArrowRight, RotateCcw, Sparkles, X } from "lucide-react";
 import { api, ApiError, type TopicChange } from "../lib/api";
 import { useToast } from "./Toast";
 import { ErrorNotice, Spinner } from "./ui";
+import { MicButton } from "./MicButton";
 
 const EXAMPLES = [
   "Move the teammate UI one from Team Updates to Databases",
@@ -29,7 +30,7 @@ function Chips({ topics, muted = false }: { topics: string[]; muted?: boolean })
 }
 
 /**
- * Lets the person reorganize topics in their own words (typed, or dictated with Wispr Flow):
+ * Lets the person reorganize topics in their own words (typed, spoken via the mic, or dictated with Wispr Flow):
  * instruction -> AI preview -> Apply -> optional Undo. Only topics ever change.
  */
 export function ReorganizePanel({ onClose, onApplied }: { onClose: () => void; onApplied: () => void }) {
@@ -142,9 +143,10 @@ export function ReorganizePanel({ onClose, onApplied }: { onClose: () => void; o
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-line/70 bg-canvas/40 px-5 py-3">
-        <p className="flex items-center gap-1.5 text-xs text-faint">
-          <Mic className="size-3.5" strokeWidth={1.75} /> Dictate with Wispr Flow or type. Only topics change, never your thoughts.
-        </p>
+        <div className="flex items-center gap-3">
+          <MicButton value={instruction} onChange={setInstruction} disabled={thinking} showLabel />
+          <p className="text-xs text-faint">Only topics change, never your thoughts.</p>
+        </div>
         <button onClick={plan} disabled={!instruction.trim() || thinking} className="btn-outline">
           {thinking ? <Spinner /> : <Sparkles className="size-4" />} {thinking ? "Working it out…" : "Preview changes"}
         </button>

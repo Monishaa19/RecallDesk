@@ -10,11 +10,14 @@ import { askRouter } from "./routes/ask.js";
 import { demoRouter } from "./routes/demo.js";
 import { summariesRouter } from "./routes/summaries.js";
 import { thoughtsRouter } from "./routes/thoughts.js";
+import { transcribeRouter } from "./routes/transcribe.js";
 import { requireUser } from "./supabase.js";
 
 const app = express();
 app.disable("x-powered-by");
 app.use(cors({ origin: config.corsOrigins, allowedHeaders: ["Authorization", "Content-Type"] }));
+// Voice recordings need a larger body limit, so this route parses its own JSON first.
+app.use("/api/transcribe", transcribeRouter);
 app.use(express.json({ limit: "64kb" }));
 
 app.get("/api/health", (_req, res) => {

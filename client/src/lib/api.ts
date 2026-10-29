@@ -125,5 +125,8 @@ export const api = {
     ),
   activity: (month: string) => request<{ days: Record<string, number> }>(`/api/summaries/activity?month=${month}&tzOffset=${tzOffset()}`),
 
+  transcribe: (audio: string, mimeType: string) =>
+    request<{ text: string }>("/api/transcribe", { method: "POST", body: JSON.stringify({ audio, mimeType }) }),
+
   seedDemo: () => request<{ saved: Thought[]; failed: number }>("/api/demo/seed", { method: "POST" }),
 };
