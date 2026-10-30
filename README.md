@@ -2,6 +2,8 @@
 
 **Capture anything. Find it when you need it.**
 
+**Live demo:** https://recalldesk-zs0o.onrender.com (free tier: the first visit can take about a minute to wake up)
+
 RecallDesk is a personal external memory. You type (or dictate with Wispr Flow) whatever is on your mind. RecallDesk:
 
 1. **Captures it.** Gemini rewrites the raw thought as a concise, faithful note. Only that note and a timestamp are saved; the original text is never stored or logged.
