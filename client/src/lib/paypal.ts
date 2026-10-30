@@ -27,18 +27,20 @@ declare global {
   }
 }
 
-let loaded: { currency: string; promise: Promise<PayPalNamespace> } | null = null;
+let loaded: { key: string; promise: Promise<PayPalNamespace> } | null = null;
 
-export function loadPayPal(currency: string): Promise<PayPalNamespace> {
-  if (loaded?.currency === currency) return loaded.promise;
-  // The SDK is loaded for one currency at a time; swap it if a different one is needed.
+/** `payee` is who receives the money: PayPal rejects an order whose payee differs from the SDK's merchant. */
+export function loadPayPal(currency: string, payee: string): Promise<PayPalNamespace> {
+  const key = `${currency}:${payee}`;
+  if (loaded?.key === key) return loaded.promise;
+  // The SDK is loaded for one currency and payee at a time; swap it if a different one is needed.
   document.getElementById("paypal-sdk")?.remove();
   delete window.paypal;
 
   const promise = (async () => {
     const cfg = await api.paypalConfig();
     if (!cfg.enabled || !cfg.clientId) throw new Error("PayPal isn't connected on the server yet.");
-    const qs = new URLSearchParams({ "client-id": cfg.clientId, currency, intent: "capture", components: "buttons" });
+    const qs = new URLSearchParams({ "client-id": cfg.clientId, currency, intent: "capture", components: "buttons", "merchant-id": payee });
     await new Promise<void>((resolve, reject) => {
       const script = document.createElement("script");
       script.id = "paypal-sdk";
@@ -50,7 +52,7 @@ export function loadPayPal(currency: string): Promise<PayPalNamespace> {
     if (!window.paypal) throw new Error("Couldn't load PayPal.");
     return window.paypal;
   })();
-  loaded = { currency, promise };
+  loaded = { key, promise };
   promise.catch(() => {
     if (loaded?.promise === promise) loaded = null;
   });

@@ -196,7 +196,7 @@ function PayPalPay({ item, onPaid }: { item: MoneyAction; onPaid: (item: MoneyAc
   useEffect(() => {
     let cancelled = false;
     let buttons: { close(): Promise<void> } | null = null;
-    loadPayPal(item.currency)
+    loadPayPal(item.currency, item.email ?? "")
       .then(async (paypal) => {
         if (cancelled || !ref.current) return;
         const b = paypal.Buttons({
@@ -212,7 +212,10 @@ function PayPalPay({ item, onPaid }: { item: MoneyAction; onPaid: (item: MoneyAc
               latest.current.toast(e instanceof ApiError ? e.message : "PayPal couldn't complete that payment.", "error");
             }
           },
-          onError: () => latest.current.toast("PayPal ran into a problem. Please try again.", "error"),
+          onError: (err) => {
+            console.error("[paypal]", err);
+            latest.current.toast("PayPal ran into a problem. Please try again.", "error");
+          },
         });
         buttons = b;
         ref.current.innerHTML = "";
@@ -228,7 +231,7 @@ function PayPalPay({ item, onPaid }: { item: MoneyAction; onPaid: (item: MoneyAc
       cancelled = true;
       void buttons?.close().catch(() => {});
     };
-  }, [item.id, item.currency, item.person]);
+  }, [item.id, item.currency, item.email, item.person]);
 
   return (
     <div>

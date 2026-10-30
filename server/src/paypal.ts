@@ -199,9 +199,7 @@ export async function createOrder(opts: {
         payee: { email_address: opts.payeeEmail },
       },
     ],
-    payment_source: {
-      paypal: { experience_context: { shipping_preference: "NO_SHIPPING", user_action: "PAY_NOW", brand_name: "RecallDesk" } },
-    },
+    application_context: { shipping_preference: "NO_SHIPPING", user_action: "PAY_NOW", brand_name: "RecallDesk" },
   });
   return order.id;
 }
