@@ -213,11 +213,7 @@ function ParkBox({ keys, onParked }: { keys: ParkKeys; onParked: (m: ParkedMeta)
       )}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line/70 bg-canvas/40 px-4 py-3">
         <div className="flex items-center gap-3">
-          <MicButton value={text} onChange={setText} disabled={busy || justParked} showLabel />
-          <p className="max-w-xs text-xs leading-snug text-faint">
-            Encrypted on this device before saving. For maximum privacy, type it: the mic briefly sends your voice to a speech
-            service to turn it into text.
-          </p>
+          <MicButton value={text} onChange={setText} disabled={busy || justParked} />
         </div>
         <button onClick={park} disabled={!text.trim() || busy} className="btn-primary min-w-[110px]">
           {busy ? <Spinner /> : <Lock className="size-4" />} {busy ? "Locking…" : "Park it"}

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { badRequest, dbError } from "../errors.js";
 import { answerQuestion, planRetrieval, type ChatTurn, type NoteForLlm } from "../llm.js";
 import { auth, type AuthedRequest } from "../supabase.js";
+import { moneyForAsk } from "./money.js";
 import { getThoughtsByIds, listThoughtsInRange, searchThoughts, type Thought } from "../thoughts.js";
 import { addDays, formatLocal, isDate, localDayStart, parseTzOffset } from "../time.js";
 
@@ -89,10 +90,17 @@ askRouter.post("/", async (req, res) => {
 
   // 3. Answer grounded in those notes.
   const forLlm: NoteForLlm[] = notes.map((n, i) => ({ ref: i + 1, when: formatLocal(n.created_at, tz), content: `${n.topics?.length ? `[${n.topics.join(", ")}] ` : ""}${n.content}${n.done_at ? " (checked off as done)" : ""}` }));
+  // Money records (with live PayPal statuses) ride along as extra notes; citing one cites its thought.
+  const money = await moneyForAsk(db);
+  money.forEach((m, i) => forLlm.push({ ref: notes.length + i + 1, when: "live PayPal status", content: m.text }));
   const result = await answerQuestion(history, question, forLlm, nowLocal);
-  const sourceIds = [...new Set(result.used_notes)]
-    .filter((ref) => ref >= 1 && ref <= notes.length)
-    .map((ref) => notes[ref - 1].id);
+  const sourceIds = [
+    ...new Set(
+      result.used_notes
+        .map((ref) => (ref >= 1 && ref <= notes.length ? notes[ref - 1].id : money[ref - notes.length - 1]?.thoughtId))
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
 
   // 4. Persist the exchange only after a successful answer.
   const askedAt = Date.now();

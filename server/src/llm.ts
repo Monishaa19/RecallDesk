@@ -214,14 +214,51 @@ function cleanEvents(raw: { title: string; date: string; time: string; kind: str
   return out;
 }
 
+const MONEY_RULES = `Money rules:
+- Also list "money": debts and payments between the person and someone else that they stated, e.g. "Rahul owes me $20 for dinner", "I need to pay Priya 15 dollars for the cab", "split the 30 dollar bill with Sam, he owes me half".
+- direction: "owed_to_me" when the other person should pay the person; "i_owe" when the person should pay them.
+- person: the other person's name as said (e.g. "Rahul"). Skip items with no named person, and skip shops, companies, bills to institutions, and the person's own spending.
+- amount: a number. Only include an item when an exact amount is stated or can be computed exactly ("half of 30" = 15). Never guess an amount.
+- currency: ISO code. "$" or "dollars" = USD, "rupees" or "₹" = INR, "euros" or "€" = EUR, "pounds" or "£" = GBP. If no currency is said, use USD.
+- reason: 1-5 words, e.g. "Dinner", "Cab fare". Empty if not said.
+- due: YYYY-MM-DD if a specific day is stated (resolve against <now> like calendar dates), otherwise "".
+- Never invent people, amounts or debts. Return an empty list when there are none.`;
+
+export interface ExtractedMoney {
+  direction: "owed_to_me" | "i_owe";
+  person: string;
+  amount: number;
+  currency: string;
+  reason: string;
+  due: string | null;
+}
+
+function cleanMoney(
+  raw: { direction: string; person: string; amount: number; currency: string; reason: string; due: string }[],
+): ExtractedMoney[] {
+  const out: ExtractedMoney[] = [];
+  for (const m of raw) {
+    const person = m.person.replace(/\s+/g, " ").trim().slice(0, 80);
+    const amount = Math.round(Number(m.amount) * 100) / 100;
+    if (!person || !(amount > 0) || amount > 10000) continue;
+    if (m.direction !== "owed_to_me" && m.direction !== "i_owe") continue;
+    const code = m.currency.trim().toUpperCase();
+    const currency = /^[A-Z]{3}$/.test(code) ? code : "USD";
+    const due = /^\d{4}-\d{2}-\d{2}$/.test(m.due.trim()) ? m.due.trim() : null;
+    out.push({ direction: m.direction, person, amount, currency, reason: m.reason.trim().slice(0, 200), due });
+    if (out.length === 5) break;
+  }
+  return out;
+}
+
 export async function condenseThought(
   raw: string,
   existingTopics: string[] = [],
   now?: { label: string; today: string },
-): Promise<{ note: string; topics: string[]; events: ExtractedEvent[] }> {
+): Promise<{ note: string; topics: string[]; events: ExtractedEvent[]; money: ExtractedMoney[] }> {
   const out = await structured({
     task: "condense",
-    system: `${CONDENSE_SYSTEM}\n\n${TOPIC_RULES}\n\n${EVENT_RULES}`,
+    system: `${CONDENSE_SYSTEM}\n\n${TOPIC_RULES}\n\n${EVENT_RULES}\n\n${MONEY_RULES}`,
     messages: [
       {
         role: "user",
@@ -241,11 +278,26 @@ export async function condenseThought(
           kind: { type: "string", enum: [...EVENT_KINDS] },
         }),
       },
+      money: {
+        type: "array",
+        description: "Debts/payments with a named person and exact amount; empty if none.",
+        items: obj({
+          direction: { type: "string", enum: ["owed_to_me", "i_owe"] },
+          person: { type: "string" },
+          amount: { type: "number" },
+          currency: { type: "string", description: "ISO 4217 code" },
+          reason: { type: "string" },
+          due: { type: "string", description: "YYYY-MM-DD or empty" },
+        }),
+      },
     }),
     validator: z.object({
       note: z.string(),
       topics: z.array(z.string()),
       events: z.array(z.object({ title: z.string(), date: z.string(), time: z.string(), kind: z.string() })),
+      money: z.array(
+        z.object({ direction: z.string(), person: z.string(), amount: z.number(), currency: z.string(), reason: z.string(), due: z.string() }),
+      ),
     }),
     effort: "low",
   });
@@ -253,6 +305,7 @@ export async function condenseThought(
     note: out.note.trim(),
     topics: normalizeTopics(out.topics, existingTopics),
     events: now && out.note.trim() ? cleanEvents(out.events, now.today) : [],
+    money: out.note.trim() ? cleanMoney(out.money) : [],
   };
 }
 
@@ -423,6 +476,7 @@ Grounding rules:
 - Answer ONLY from the notes provided in <notes> for this turn and from the earlier conversation. Never use outside knowledge to fill in what they captured.
 - If the notes don't contain what they're asking about, say plainly that you couldn't find it in their saved thoughts. Never guess or fabricate a memory. You may mention closely related notes if any exist.
 - Notes record what they thought or intended, not what they did. Never claim they completed, decided, or did something unless a note says so. A note marked "(checked off as done)" means they ticked it off in RecallDesk; you may mention that.
+- Lines starting "MONEY RECORD:" are the person's money requests and payments, with their live PayPal status. Use them for questions about who owes whom, what's been paid or what's still open; they are more current than the notes.
 - Do not diagnose, judge, or psychoanalyze. No productivity advice unless asked.
 - Mention when a thought was captured if it helps, relative to the current date: "today", "yesterday", "on Monday", or a date for older notes.
 - Be concise and warm: usually 1-4 sentences. Use a short "- " bullet list only when listing several separate items. Plain text, no headings or bold.

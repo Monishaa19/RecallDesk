@@ -16,6 +16,10 @@ export const config = {
     .filter(Boolean),
   embeddingsEnabled: env("EMBEDDINGS_ENABLED", "true") !== "false",
   embeddingModel: env("EMBEDDING_MODEL", "Xenova/all-MiniLM-L6-v2"),
+  // PayPal developer platform. "sandbox" uses test accounts and test money only.
+  paypalEnv: env("PAYPAL_ENV", "sandbox") === "live" ? "live" : "sandbox",
+  paypalClientId: env("PAYPAL_CLIENT_ID"),
+  paypalClientSecret: env("PAYPAL_CLIENT_SECRET"),
   corsOrigins: env("CORS_ORIGINS", "http://localhost:5173")
     .split(",")
     .map((s) => s.trim())
@@ -24,3 +28,4 @@ export const config = {
 
 export const isSupabaseConfigured = Boolean(config.supabaseUrl && config.supabaseAnonKey);
 export const isLlmConfigured = Boolean(config.geminiApiKey);
+export const isPayPalConfigured = Boolean(config.paypalClientId && config.paypalClientSecret);

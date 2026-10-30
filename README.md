@@ -9,7 +9,8 @@ RecallDesk is a personal external memory. You type (or dictate with Wispr Flow) 
 3. **Recalls it.** *Ask RecallDesk* uses Gemini to answer natural-language questions ("what was that rendering idea?") from your own notes only, with clickable source references. Daily and monthly summaries give a quick look back.
 
 4. **Puts dates on your calendar.** Say "DBMS assignment due this Friday" or "interview next Monday at 3" while capturing, and Gemini works out the actual date and adds it to RecallDesk's built-in **Calendar** page. No Google Calendar connection is needed. Vague timing ("sometime next week") is never guessed into a date.
-5. **Lets you park it.** *Park it* is a private place to set a thought down, such as a worry or a loop you don't want to keep holding. It's **end-to-end encrypted in your browser** with a secret code only you know. RecallDesk's server, the AI, and the database only ever see ciphertext, and parked thoughts never appear in search, Ask, or summaries.
+5. **Settles money through PayPal.** Say "Rahul owes me $20 for dinner" or "I owe Priya $15 for the cab", and Gemini spots the money moment. After you confirm, RecallDesk sends Rahul a **PayPal invoice** or opens **PayPal Checkout** so you can pay Priya, then ticks the thought off when it's paid. *Ask RecallDesk* answers "who still owes me money?" from live PayPal statuses.
+6. **Lets you park it.** *Park it* is a private place to set a thought down, such as a worry or a loop you don't want to keep holding. It's **end-to-end encrypted in your browser** with a secret code only you know. RecallDesk's server, the AI, and the database only ever see ciphertext, and parked thoughts never appear in search, Ask, or summaries.
 
 Thoughts can be ticked off like a task list (they move into a collapsible *Completed* section), but there are no folders, tags, or categories, by design.
 
@@ -49,6 +50,21 @@ Summaries are generated on demand from the notes in the chosen day or month. The
 
 ---
 
+### Money moments with PayPal
+
+| Step | What happens |
+|---|---|
+| Capture | The same Gemini call that writes the note also extracts money items: direction (`owed_to_me` / `i_owe`), person, exact amount, currency, reason, due date. No exact amount or no named person means no item; nothing is guessed. |
+| Suggest | Items are saved as `suggested`. **Nothing is sent to PayPal until the person taps confirm** (human in the loop). Emails are remembered per name in `contacts`. |
+| Request money | **PayPal Invoicing API v2**: create the invoice (amount, reason, due date, recipient) and send it; PayPal emails the person a pay link. Remind and cancel use the same API. |
+| Pay someone | **PayPal Orders API v2 + JavaScript SDK buttons**: the server creates an order whose payee is the friend's PayPal email, the person approves it in the PayPal window, and the server captures it. |
+| Settle | Open items are re-checked against PayPal when the Money page or Ask RecallDesk is used (and every 20 s while the Money page is open). Paid → the item is marked paid and its thought is ticked off. |
+| Recall | Ask RecallDesk receives the money records with their live PayPal status, so "who still owes me?" is answered from PayPal, not memory. |
+
+OAuth tokens are fetched with the client credentials on the server and cached; the secret never reaches the browser, and PayPal errors are logged by `debug_id` only.
+
+**Sandbox note:** requests are issued from the RecallDesk sandbox business account. In production each user would connect their own PayPal account through PayPal's partner onboarding so invoices come from them; status updates would move from polling to verified webhooks.
+
 ### Voice input
 
 Every text box (Capture, Ask, Park it, Reorganize) has a **mic button**, so voice works for anyone, with or without Wispr Flow:
@@ -78,7 +94,7 @@ Every text box (Capture, Ask, Park it, Reorganize) has a **mic button**, so voic
 2. Open **SQL Editor → New query**, paste the whole contents of
    [`supabase/migrations/20261027000000_init.sql`](supabase/migrations/20261027000000_init.sql), and click **Run**.
    This enables `pgvector` and creates the `thoughts`, `chat_messages` and `summaries` tables, their RLS policies, and the `search_thoughts` function.
-   Then run the other files in `supabase/migrations/` **in filename order** the same way (checkbox support, *Park it*, topics and the calendar).
+   Then run the other files in `supabase/migrations/` **in filename order** the same way (checkbox support, *Park it*, topics, the calendar and money).
    *(With the Supabase CLI instead: `npx supabase link --project-ref <ref>` then `npx supabase db push`.)*
 3. **Authentication → Sign In / Providers → Email**: make sure Email is enabled.
    - For a frictionless hackathon demo, turn **Confirm email** *off*. Otherwise new users must click the confirmation link before signing in (the app handles both).
@@ -175,6 +191,10 @@ All routes require `Authorization: Bearer <supabase access token>`.
 | `GET` | `/api/summaries/activity?month=` | Days with captures (for the date strip) |
 | `GET` | `/api/calendar?from=&to=` · `/api/calendar/upcoming?from=` | Calendar events in a date range / coming up |
 | `POST/PATCH/DELETE` | `/api/calendar[/:id]` `{title, date, time?, kind?}` | Add, change or remove a calendar event by hand |
+| `GET` | `/api/money?sync=1` | Money items, re-checked against PayPal |
+| `POST` | `/api/money/:id/confirm` `{email}` | Send the PayPal invoice (owed to me) or get ready for Checkout (I owe) |
+| `POST` | `/api/money/:id/order` · `/capture` `{orderId}` | PayPal Checkout: create and capture the order |
+| `PATCH` · `POST` | `/api/money/:id` · `/refresh` `/remind` `/cancel` `/dismiss` | Edit a suggestion, refresh status, remind, cancel, dismiss |
 | `POST` | `/api/demo/seed` | Opt-in: capture the 5 sample thoughts for the current user |
 
 ## Data model
@@ -186,4 +206,6 @@ All routes require `Authorization: Bearer <supabase access token>`.
 | `park_keys` | `user_id`, `public_key`, `wrapped_private_key`, `wrap_iv`, `salt`, `iterations` (the code itself is never stored) |
 | `parked_thoughts` | `id`, `user_id`, `ciphertext`, `iv`, `wrapped_key`, `created_at` (ciphertext only) |
 | `calendar_events` | `id`, `user_id`, `thought_id` (source capture; removed with it), `title`, `event_date`, `event_time`, `kind`, `created_at` |
+| `money_actions` | `id`, `user_id`, `thought_id`, `direction`, `person`, `email`, `amount`, `currency`, `reason`, `due_date`, `status`, `paypal_id`, `pay_url`, `paid_at`, timestamps |
+| `contacts` | `id`, `user_id`, `name`, `email` (so a name needs an email only once) |
 | `summaries` | `id`, `user_id`, `period_type`, `period_key`, `content`, `thought_ids`, `source_hash`, `created_at` (a cache, always regenerable) |

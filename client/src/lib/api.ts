@@ -24,6 +24,26 @@ export interface CalendarEvent {
   thought?: { id: string; content: string; done_at: string | null } | null;
 }
 
+export type MoneyStatus = "suggested" | "sent" | "awaiting_payment" | "paid" | "cancelled" | "dismissed";
+
+export interface MoneyAction {
+  id: string;
+  thought_id: string | null;
+  direction: "owed_to_me" | "i_owe";
+  person: string;
+  email: string | null;
+  amount: number;
+  currency: string;
+  reason: string;
+  due_date: string | null;
+  status: MoneyStatus;
+  paypal_id: string | null;
+  pay_url: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TopicChange {
   id: string;
   content: string;
@@ -110,7 +130,7 @@ export const api = {
   },
   getThought: (id: string) => request<{ thought: Thought }>(`/api/thoughts/${encodeURIComponent(id)}`),
   capture: (text: string) =>
-    request<{ thought: Thought; events: CalendarEvent[] }>("/api/thoughts", {
+    request<{ thought: Thought; events: CalendarEvent[]; money: MoneyAction[] }>("/api/thoughts", {
       method: "POST",
       body: JSON.stringify({ text, tzOffset: tzOffset() }),
     }),
@@ -152,6 +172,20 @@ export const api = {
   updateEvent: (id: string, patch: { title?: string; date?: string; time?: string | null; kind?: EventKind }) =>
     request<{ event: CalendarEvent }>(`/api/calendar/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteEvent: (id: string) => request<void>(`/api/calendar/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  paypalConfig: () => request<{ enabled: boolean; clientId: string | null; env: "sandbox" | "live" }>("/api/money/config"),
+  money: (sync = false) => request<{ items: MoneyAction[] }>(`/api/money${sync ? "?sync=1" : ""}`),
+  editMoney: (id: string, patch: Partial<Pick<MoneyAction, "direction" | "person" | "email" | "amount" | "currency" | "reason" | "due_date">>) =>
+    request<{ item: MoneyAction }>(`/api/money/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  confirmMoney: (id: string, email: string) =>
+    request<{ item: MoneyAction }>(`/api/money/${encodeURIComponent(id)}/confirm`, { method: "POST", body: JSON.stringify({ email }) }),
+  moneyOrder: (id: string) => request<{ orderId: string }>(`/api/money/${encodeURIComponent(id)}/order`, { method: "POST" }),
+  captureMoney: (id: string, orderId: string) =>
+    request<{ item: MoneyAction }>(`/api/money/${encodeURIComponent(id)}/capture`, { method: "POST", body: JSON.stringify({ orderId }) }),
+  refreshMoney: (id: string) => request<{ item: MoneyAction }>(`/api/money/${encodeURIComponent(id)}/refresh`, { method: "POST" }),
+  remindMoney: (id: string) => request<{ item: MoneyAction }>(`/api/money/${encodeURIComponent(id)}/remind`, { method: "POST" }),
+  cancelMoney: (id: string) => request<{ item: MoneyAction }>(`/api/money/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
+  dismissMoney: (id: string) => request<{ item: MoneyAction }>(`/api/money/${encodeURIComponent(id)}/dismiss`, { method: "POST" }),
 
   seedDemo: () => request<{ saved: Thought[]; failed: number }>("/api/demo/seed", {
       method: "POST",

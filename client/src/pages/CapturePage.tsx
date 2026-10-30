@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, CalendarPlus, Sparkles } from "lucide-react";
-import { api, ApiError, type CalendarEvent, type Thought } from "../lib/api";
+import { api, ApiError, type CalendarEvent, type MoneyAction, type Thought } from "../lib/api";
 import { formatEventDate, formatEventTime, greeting } from "../lib/format";
 import { ThoughtCard } from "../components/ThoughtCard";
 import { MicButton } from "../components/MicButton";
+import { MoneyCard } from "../components/MoneyCard";
 import { notifyThoughtsChanged, useThoughtsChanged } from "../components/ThoughtDialog";
 import { useToast } from "../components/Toast";
 import { ErrorNotice, Skeleton, Spinner } from "../components/ui";
@@ -18,6 +19,7 @@ export function CapturePage() {
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState<string | null>(null);
   const [addedEvents, setAddedEvents] = useState<CalendarEvent[]>([]);
+  const [moneyItems, setMoneyItems] = useState<MoneyAction[]>([]);
   const [recent, setRecent] = useState<Thought[] | null>(null);
   const [recentError, setRecentError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
@@ -51,12 +53,14 @@ export function CapturePage() {
     setCapturing(true);
     setCaptureError(null);
     setAddedEvents([]);
+    setMoneyItems([]);
     try {
-      const { thought, events = [] } = await api.capture(text);
+      const { thought, events = [], money = [] } = await api.capture(text);
       // Only now has the database confirmed the save.
       setText("");
       setJustSaved(thought.id);
       setAddedEvents(events);
+      setMoneyItems(money);
       setRecent((r) => [thought, ...(r ?? [])].slice(0, RECENT_COUNT));
       toast(
         events.length
@@ -119,7 +123,7 @@ export function CapturePage() {
         />
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line/70 bg-canvas/40 px-4 py-3">
           <div className="flex items-center gap-3">
-            <MicButton value={text} onChange={setText} disabled={capturing} showLabel />
+            <MicButton value={text} onChange={setText} disabled={capturing} />
             <p className="hidden text-xs text-faint sm:block">Tap to speak, or use Wispr Flow.</p>
           </div>
           <div className="flex items-center gap-3">
@@ -138,6 +142,20 @@ export function CapturePage() {
       </section>
 
       {captureError && <ErrorNotice className="mt-4" message={captureError} onRetry={capture} />}
+
+      {moneyItems.length > 0 && (
+        <div className="animate-fade-up mt-4 space-y-3">
+          {moneyItems.map((m) => (
+            <MoneyCard
+              key={m.id}
+              item={m}
+              onChange={(next) =>
+                setMoneyItems((list) => (next.status === "dismissed" ? list.filter((i) => i.id !== next.id) : list.map((i) => (i.id === next.id ? next : i))))
+              }
+            />
+          ))}
+        </div>
+      )}
 
       {addedEvents.length > 0 && (
         <div className="animate-fade-up mt-4 rounded-2xl border border-accent/25 bg-accent-soft/60 px-4 py-3">

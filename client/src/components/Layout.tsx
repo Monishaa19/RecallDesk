@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { CalendarCheck, CalendarDays, Feather, Library, Lock, LogOut, MessageCircle } from "lucide-react";
+import { CalendarCheck, CalendarDays, Feather, Library, Lock, LogOut, MessageCircle, Wallet } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { ThoughtDialog } from "./ThoughtDialog";
@@ -8,10 +8,11 @@ import { Logo } from "./ui";
 
 const NAV = [
   { to: "/", label: "Capture", icon: Feather, end: true },
-  { to: "/thoughts", label: "My Thoughts", icon: Library },
+  { to: "/thoughts", label: "My Thoughts", short: "Thoughts", icon: Library },
   { to: "/ask", label: "Ask RecallDesk", short: "Ask", icon: MessageCircle },
   { to: "/calendar", label: "Calendar", icon: CalendarCheck },
-  { to: "/summaries", label: "Summaries", icon: CalendarDays },
+  { to: "/money", label: "Money", icon: Wallet },
+  { to: "/summaries", label: "Summaries", short: "Recap", icon: CalendarDays },
   { to: "/park", label: "Park it", short: "Park", icon: Lock },
 ];
 
@@ -97,7 +98,7 @@ export function Layout() {
       {/* Mobile tab bar */}
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-7 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
         {NAV.map(({ to, label, short, icon: Icon, end }) => (
           <NavLink

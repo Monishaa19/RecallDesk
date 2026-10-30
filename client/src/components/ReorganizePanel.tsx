@@ -144,7 +144,7 @@ export function ReorganizePanel({ onClose, onApplied }: { onClose: () => void; o
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-line/70 bg-canvas/40 px-5 py-3">
         <div className="flex items-center gap-3">
-          <MicButton value={instruction} onChange={setInstruction} disabled={thinking} showLabel />
+          <MicButton value={instruction} onChange={setInstruction} disabled={thinking} />
           <p className="text-xs text-faint">Only topics change, never your thoughts.</p>
         </div>
         <button onClick={plan} disabled={!instruction.trim() || thinking} className="btn-outline">

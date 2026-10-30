@@ -3,12 +3,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { config, isLlmConfigured, isSupabaseConfigured } from "./config.js";
+import { config, isLlmConfigured, isPayPalConfigured, isSupabaseConfigured } from "./config.js";
 import { embeddingsStatus, warmUpEmbeddings } from "./embeddings.js";
 import { HttpError } from "./errors.js";
 import { askRouter } from "./routes/ask.js";
 import { calendarRouter } from "./routes/calendar.js";
 import { demoRouter } from "./routes/demo.js";
+import { moneyRouter } from "./routes/money.js";
 import { summariesRouter } from "./routes/summaries.js";
 import { thoughtsRouter } from "./routes/thoughts.js";
 import { transcribeRouter } from "./routes/transcribe.js";
@@ -27,6 +28,7 @@ app.get("/api/health", (_req, res) => {
     database: isSupabaseConfigured,
     ai: isLlmConfigured,
     embeddings: embeddingsStatus().enabled,
+    paypal: isPayPalConfigured,
   });
 });
 
@@ -34,6 +36,7 @@ app.use("/api/thoughts", requireUser, thoughtsRouter);
 app.use("/api/ask", requireUser, askRouter);
 app.use("/api/summaries", requireUser, summariesRouter);
 app.use("/api/calendar", requireUser, calendarRouter);
+app.use("/api/money", requireUser, moneyRouter);
 app.use("/api/demo", requireUser, demoRouter);
 
 app.use("/api", (_req, res) => {

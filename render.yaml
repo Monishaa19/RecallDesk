@@ -16,6 +16,12 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
       # Read by the website build (Vite bakes VITE_* values into the bundle; they're public by design).
       - key: VITE_SUPABASE_URL
         sync: false

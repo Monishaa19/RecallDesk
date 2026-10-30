@@ -12,14 +12,11 @@ export function MicButton({
   value,
   onChange,
   disabled = false,
-  showLabel = false,
   className = "",
 }: {
   value: string;
   onChange: (text: string) => void;
   disabled?: boolean;
-  /** Show "Speak" / "Listening…" text next to the icon. */
-  showLabel?: boolean;
   className?: string;
 }) {
   const toast = useToast();
@@ -46,9 +43,7 @@ export function MicButton({
       aria-label={label}
       aria-pressed={listening}
       title={label}
-      className={`relative inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-        showLabel ? "h-10 px-3.5" : "size-10"
-      } ${
+      className={`relative inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 size-10 ${
         listening
           ? "bg-danger text-white shadow-card"
           : "border border-line bg-surface text-ink-soft hover:border-accent/40 hover:text-accent"
@@ -61,9 +56,6 @@ export function MicButton({
         <Square className="relative size-3.5 fill-current" />
       ) : (
         <Mic className="size-4" strokeWidth={2} />
-      )}
-      {showLabel && (
-        <span className="relative">{listening ? "Listening…" : transcribing ? "Writing…" : "Speak"}</span>
       )}
     </button>
   );

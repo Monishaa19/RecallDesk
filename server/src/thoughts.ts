@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { embed, toVector } from "./embeddings.js";
 import { badRequest, dbError, HttpError } from "./errors.js";
-import { categorizeNotes, condenseThought } from "./llm.js";
+import { categorizeNotes, condenseThought, type ExtractedEvent, type ExtractedMoney } from "./llm.js";
 import { formatLocal, todayLocal } from "./time.js";
 
 export interface Thought {
@@ -65,13 +65,13 @@ export async function captureThought(
   db: SupabaseClient,
   raw: string,
   tzOffset = 0,
-): Promise<{ thought: Thought; events: CalendarEvent[] }> {
+): Promise<{ thought: Thought; events: CalendarEvent[]; money: MoneyAction[] }> {
   const text = raw.trim();
   if (!text) throw badRequest("Write a thought first.");
   if (text.length > MAX_CAPTURE_CHARS) throw badRequest(`That's a lot! Please keep a capture under ${MAX_CAPTURE_CHARS} characters.`);
 
   const now = { label: formatLocal(new Date(), tzOffset), today: todayLocal(tzOffset) };
-  const { note, topics, events } = await condenseThought(text, await existingTopics(db), now);
+  const { note, topics, events, money } = await condenseThought(text, await existingTopics(db), now);
   if (!note) throw new HttpError(422, "We couldn't find a thought to save in that text. Try adding a little more detail.", "empty_note");
 
   const vector = await embed(note);
@@ -83,18 +83,72 @@ export async function captureThought(
   if (error || !data) throw dbError(error, "saving the thought");
   const thought = data as Thought;
 
-  if (!events.length) return { thought, events: [] };
-  // The thought is already safe; a calendar hiccup shouldn't turn the capture into an error.
-  const { data: saved, error: evErr } = await db
-    .from("calendar_events")
-    .insert(events.map((e) => ({ thought_id: thought.id, title: e.title, event_date: e.date, event_time: e.time, kind: e.kind })))
-    .select(EVENT_COLUMNS);
-  if (evErr) {
-    console.error("[calendar] couldn't save events:", evErr.code, evErr.message);
-    return { thought, events: [] };
-  }
-  return { thought, events: (saved ?? []) as CalendarEvent[] };
+  // The thought is already safe; a calendar or money hiccup shouldn't turn the capture into an error.
+  const [savedEvents, savedMoney] = await Promise.all([saveEvents(db, thought.id, events), suggestMoney(db, thought.id, money)]);
+  return { thought, events: savedEvents, money: savedMoney };
 }
+
+async function saveEvents(db: SupabaseClient, thoughtId: string, events: ExtractedEvent[]): Promise<CalendarEvent[]> {
+  if (!events.length) return [];
+  const { data, error } = await db
+    .from("calendar_events")
+    .insert(events.map((e) => ({ thought_id: thoughtId, title: e.title, event_date: e.date, event_time: e.time, kind: e.kind })))
+    .select(EVENT_COLUMNS);
+  if (error) {
+    console.error("[calendar] couldn't save events:", error.code, error.message);
+    return [];
+  }
+  return (data ?? []) as CalendarEvent[];
+}
+
+/** Save the AI's money suggestions. Nothing goes to PayPal until the person confirms one. */
+async function suggestMoney(db: SupabaseClient, thoughtId: string, items: ExtractedMoney[]): Promise<MoneyAction[]> {
+  if (!items.length) return [];
+  const { data: contacts } = await db.from("contacts").select("name, email");
+  const emailFor = (name: string) =>
+    (contacts ?? []).find((c) => (c.name as string).toLowerCase() === name.toLowerCase())?.email as string | undefined;
+  const { data, error } = await db
+    .from("money_actions")
+    .insert(
+      items.map((m) => ({
+        thought_id: thoughtId,
+        direction: m.direction,
+        person: m.person,
+        email: emailFor(m.person) ?? null,
+        amount: m.amount,
+        currency: m.currency,
+        reason: m.reason,
+        due_date: m.due,
+      })),
+    )
+    .select(MONEY_COLUMNS);
+  if (error) {
+    console.error("[money] couldn't save suggestions:", error.code, error.message);
+    return [];
+  }
+  return (data ?? []) as MoneyAction[];
+}
+
+export interface MoneyAction {
+  id: string;
+  thought_id: string | null;
+  direction: "owed_to_me" | "i_owe";
+  person: string;
+  email: string | null;
+  amount: number;
+  currency: string;
+  reason: string;
+  due_date: string | null;
+  status: "suggested" | "sent" | "awaiting_payment" | "paid" | "cancelled" | "dismissed";
+  paypal_id: string | null;
+  pay_url: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const MONEY_COLUMNS =
+  "id, thought_id, direction, person, email, amount, currency, reason, due_date, status, paypal_id, pay_url, paid_at, created_at, updated_at";
 
 export interface CalendarEvent {
   id: string;
